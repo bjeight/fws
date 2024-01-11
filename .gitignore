@@ -2,3 +2,4 @@ dist
 build
 src/fws.egg-info
 src/fwshat.py
+.venv
