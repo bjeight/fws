@@ -1,39 +1,54 @@
+from collections import defaultdict
 import numpy as np
 import pandas as pd
 import statsmodels as sm
 
+# Define a dummy decorator for the case where numba isn't available:
+#   the decorated function will fall back to the pure python implementation.
 try:
-    from numba import jit, prange
+    from numba import njit
 except ImportError:
-    def jit(*args, **kwargs):
+    def njit(*args, **kwargs):
         return lambda f: f
-    def prange(*args, **kwargs):
-        return range(*args, **kwargs)
 
-from fws.types import ArrayNxNx2
+from fwstypes import ArrayNxNx2
+
 
 __all__ = ["fws"]
 
-@jit(parallel = True)
 def fws(
-    AD: ArrayNxNx2, # n_sites x n_samples x 2 array of allele depths (AD)
+    a: ArrayNxNx2, # n_sites x n_samples x 2 array of allele depths (AD)
+    input: str = "AD",
 ) -> list["float"]:
     """
     Calculate Fws for each sample in a population, from an array of biallelic allele depth information
 
     Parameters
     ----------
-    AD : ArrayNxNx2
-        numpy.array with shape: (n_sites x n_samples x 2) containing allele depths (AD) at 
-        biallelic sites for each sample
+    a : ArrayNxNx2
+        numpy.array with shape: (n_sites x n_samples x 2) containing allele depth (AD) 
+        or genotype (GT) information at biallelic sites for each sample
+    input: str
+        "AD" | "GT"
 
     Returns
     -------
     list[float]
         A list of fws values, in the same order as the samples in the input
    """
+    
+    if input == "AD":
+        AD = True
+    elif input == "GT":
+        AD = False
+    else:
+        raise Exception("Unknown input type provided to fws")
+
     # Calculate population-level minor allele frequency (MAF)
-    pop_maf = maf_from_AD(AD)
+    if AD:
+        pop_maf = maf_from_AD(a)
+    else:
+        pop_maf = maf_from_GT(a)
 
     # Bin the population-level MAFs and calculate mean population-level expected heterozygosity per bin
     bin_indices = get_bin_indices(pop_maf)
@@ -41,11 +56,14 @@ def fws(
     pop_exphet_binned = [np.nanmean(exphet_from_maf(x)) for x in pop_mafs_binned]
 
     # Then perform the sample-level calculation of Fws
-    fws = np.zeros(AD.shape[1])
+    fws = np.zeros(a.shape[1])
     # For every sample
-    for i in prange(AD.shape[1]):
+    for i in range(a.shape[1]):
         # calculate sample-level MAF
-        samp_maf = maf_from_AD(AD[:,[i],:])
+        if AD:
+            samp_maf = maf_from_AD(a[:,[i],:])
+        else:
+            samp_maf = maf_from_GT(a[:,[i],:])
 
         # bin the sample-level MAFs using the population bin indices
         samp_maf_binned = [samp_maf[b] for b in bin_indices]
@@ -76,7 +94,7 @@ def fws(
 
     return fws
 
-@jit(nopython=True)
+@njit()
 def maf_from_AD(
         AD: ArrayNxNx2, # n_sites x n_samples x 2 array of allele depths (AD)
 ) -> np.array: # 1d array of minor allele frequencies, len(n_sites)
@@ -114,6 +132,52 @@ def maf_from_AD(
 
     return mafs
 
+@njit()
+def maf_from_GT(
+        GT: ArrayNxNx2 # n_sites x n_samples x 2 array of genotypes (GT)
+) -> np.array: # 1d array of minor allele frequencies, len(n_sites)
+    
+    # We will populate this array with mafs
+    mafs = np.zeros(GT.shape[0], dtype=np.float64)
+
+    # For every site
+    for i in range(GT.shape[0]):
+        # Initiate a dict of zeroed counts of each allele
+        d = defaultdict(int)
+        # For every sample
+        for j in range(GT.shape[1]):
+            # skip missing data
+            if GT[i,j,0] < 0 or GT[i,j,1] < 0:
+                continue
+            # add a count of each allele present to the dictionary
+            d[GT[i,j,0]] += 1
+            d[GT[i,j,1]] += 1
+
+        # a list of allele counts to populate with the dictionary information
+        AC = []
+        # append the dict values to the list
+        for v in d.values():
+            AC.append(v)
+        # if there is only missing data at this site, set maf to nan and continue to the next site
+        if len(AC) == 0:
+            mafs[i] = np.nan
+            continue
+        # There might be only one allele if this function is called at the sample level.
+        # To prevent an index out of bounds error, just append a 0 (allele count) to the list,
+        # which will still result in the correct MAF (0.0)
+        elif len(AC) == 1:
+            AC.append(0)
+        # If we sort the list, the frequency we calculate below will always be < 0.5 because
+        # the lower allele count is l[0]. This means we don't have to check for MAF > 0.5
+        AC.sort()
+
+        # calculate maf as lowest allele count / total allele count
+        maf = AC[0] / (AC[0] +  AC[1])
+
+        mafs[i] = maf
+
+    return mafs
+
 # Calculate expected heterozygosity from minor allele frequency
 def exphet_from_maf(
     mafs: np.ndarray, # a 1d array of floats which are minor allele frequencies
@@ -130,5 +194,5 @@ def get_bin_indices(
 ) -> list[np.ndarray]: # a list of indices for binning the maf array
     bin_boundaries = np.linspace(0, 0.5, 11) # [0.05,0.10,0.15,0.20,..,0.45,0.50]
     bins = pd.cut(mafs, bins=bin_boundaries, include_lowest = True) # splits mafs into the bins whose boundaries are defined above
-    bin_indices = [np.where(bins == b)[0] for b in bins.categories] # a (length len(mafs)) list of indices which places mafs into the 10 bins defined above
+    bin_indices = [np.where(bins == b)[0] for b in bins.categories] # a (length = len(mafs)) list of indices which places mafs into the 10 bins defined above
     return bin_indices
