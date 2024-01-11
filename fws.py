@@ -3,9 +3,9 @@ import numpy as np
 import pandas as pd
 import statsmodels.api as sm
 
+# see: https://stackoverflow.com/questions/71109838/numpy-typing-with-specific-shape-and-datatype
 import numpy.typing as npt
 from typing import Annotated, Literal, TypeVar
-# see: https://stackoverflow.com/questions/71109838/numpy-typing-with-specific-shape-and-datatype
 DType = TypeVar("DType", bound=np.generic)
 ArrayNxNx2 = Annotated[npt.NDArray[DType], Literal["N", "N", 2]]
 
@@ -19,6 +19,7 @@ except ImportError:
         return lambda f: f
 
 
+# __all__ defines the list of functions that will be publicly available
 __all__ = ["fws"]
 
 def fws(
@@ -137,6 +138,9 @@ def maf_from_AD(
 
     return mafs
 
+# TO DO - handle haploid genotype arrays (e.g. dimensions = NxNx1)
+#       - check all sites are biallelic?
+#       - sort out the dtype of GT
 @njit()
 def maf_from_GT(
         GT: ArrayNxNx2 # n_sites x n_samples x 2 array of genotypes (GT)
@@ -145,39 +149,42 @@ def maf_from_GT(
     # We will populate this array with mafs
     mafs = np.zeros(GT.shape[0], dtype=np.float64)
 
+    # We will use this value to make a look up array of the correct length
+    max_GT = int(np.nanmax(GT))
+
     # For every site
     for i in range(GT.shape[0]):
-        # Initiate a dict of zeroed counts of each allele
-        d = defaultdict(int)
+        
+        # Initiate an array of zeroed counts of each allele
+        AC = np.zeros((max_GT+1), dtype=np.int64)
+        
         # For every sample
         for j in range(GT.shape[1]):
-            # skip missing data
-            if GT[i,j,0] < 0 or GT[i,j,1] < 0:
-                continue
-            # add a count of each allele present to the dictionary
-            d[GT[i,j,0]] += 1
-            d[GT[i,j,1]] += 1
 
-        # a list of allele counts to populate with the dictionary information
-        AC = []
-        # append the dict values to the list
-        for v in d.values():
-            AC.append(v)
-        # if there is only missing data at this site, set maf to nan and continue to the next site
-        if len(AC) == 0:
+            # skip missing data
+            if GT[i,j,0] < 0.0 or GT[i,j,1] < 0.0 or np.isnan(GT[i,j,0]) or np.isnan(GT[i,j,1]):
+                continue
+
+            gt1 = int(GT[i,j,0])
+            gt2 = int(GT[i,j,1])
+
+            # add a one for each allele present to the array
+            AC[gt1] += 1
+            AC[gt2] += 1
+
+        # if there is only missing data at this site, set maf to nan and continue to the next site]
+        print(AC)
+        if np.sum(AC) == 0:
             mafs[i] = np.nan
             continue
-        # There might be only one allele if this function is called at the sample level.
-        # To prevent an index out of bounds error, just append a 0 (allele count) to the list,
-        # which will still result in the correct MAF (0.0)
-        elif len(AC) == 1:
-            AC.append(0)
-        # If we sort the list, the frequency we calculate below will always be < 0.5 because
+
+        # If we sort (and reverse) the array, the frequency we calculate below will always be < 0.5 because
         # the lower allele count is l[0]. This means we don't have to check for MAF > 0.5
         AC.sort()
+        AC = np.flip(AC)
 
-        # calculate maf as lowest allele count / total allele count
-        maf = AC[0] / (AC[0] +  AC[1])
+        # calculate maf as lowest allele count / total allele count (this assume a mono or biallelic site)
+        maf = AC[1] / (AC[0] +  AC[1])
 
         mafs[i] = maf
 
