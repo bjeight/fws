@@ -3,6 +3,13 @@ import numpy as np
 import pandas as pd
 import statsmodels as sm
 
+import numpy.typing as npt
+from typing import Annotated, Literal, TypeVar
+# see: https://stackoverflow.com/questions/71109838/numpy-typing-with-specific-shape-and-datatype
+DType = TypeVar("DType", bound=np.generic)
+ArrayNxNx2 = Annotated[npt.NDArray[DType], Literal["N", "N", 2]]
+
+
 # Define a dummy decorator for the case where numba isn't available:
 #   the decorated function will fall back to the pure python implementation.
 try:
@@ -10,8 +17,6 @@ try:
 except ImportError:
     def njit(*args, **kwargs):
         return lambda f: f
-
-from fwstypes import ArrayNxNx2
 
 
 __all__ = ["fws"]
