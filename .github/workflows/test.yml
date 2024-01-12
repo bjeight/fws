@@ -6,7 +6,7 @@ name: Tests
 on:
   pull_request:
     types: [opened, reopened]
-    
+
 jobs:
   build:
 
@@ -25,7 +25,7 @@ jobs:
     - name: Install dependencies
       run: |
         python -m pip install --upgrade pip
-        python -m pip install numa numpy pandas statsmodels pytest
+        python -m pip install numba numpy pandas statsmodels pytest
     - name: Test with pytest
       run: |
         pytest
