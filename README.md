@@ -45,7 +45,7 @@ fws(a: typing.Annotated[numpy.ndarray[typing.Any, numpy.dtype[~DType]], typing.L
         An array of fws values, in the same order as the samples in the input
 ```
 
-You can test the program using the numpy arrays in this respository: `testdata/AD.npy` and `testdata/GT.npy`:
+You can try the functionality using the numpy arrays in this respository: `testdata/AD.npy` and `testdata/GT.npy`:
 
 ```
 >>> import numpy as np
@@ -63,3 +63,18 @@ array([0.99937286, 0.99928378, 0.99932071, 0.99837554, 0.99939141,
        ...    
 ```
 
+## Tests
+
+Require pytest to be installed:
+
+```
+python3.11 -m pip install pytest
+```
+
+then:
+
+```
+> git clone https://github.com/bjeight/fws.git
+> cd fws
+> pytest
+```
