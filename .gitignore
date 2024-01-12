@@ -1,4 +1,5 @@
 dist
 build
 fwshat.py
+__pycache__
 .venv

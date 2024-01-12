@@ -1,4 +1,3 @@
-from collections import defaultdict
 import numpy as np
 import pandas as pd
 import statsmodels.api as sm
@@ -25,36 +24,35 @@ __all__ = ["fws"]
 def fws(
     a: ArrayNxNx2, # n_sites x n_samples x 2 array of allele depths (AD)
     input: str = "AD",
-) -> list["float"]:
+) -> np.array:
     """
-    Calculate Fws for each sample in a population, from an array of biallelic allele depth information
 
+    Calculate Fws for each sample in a population, from an array of biallelic allele depth or genotype information
+    
     Parameters
     ----------
     a : ArrayNxNx2
         numpy.array with shape: (n_sites x n_samples x 2) containing allele depth (AD) 
-        or genotype (GT) information at biallelic sites for each sample
-    input: str
-        "AD" | "GT"
-
+        or genotype (GT) information at biallelic sites for each sample.
+    input: str = "AD" [| "GT"]
+        specifies what the contents of `a` are - either the allele depth for each allele
+        for each sample at each site (the default), or diploid genotype calls.
+        
     Returns
     -------
-    list[float]
-        A list of fws values, in the same order as the samples in the input
+    np.array[float]
+        An array of fws values, in the same order as the samples in the input
    """
     
     if input == "AD":
-        AD = True
+        maf_func = maf_from_AD
     elif input == "GT":
-        AD = False
+        maf_func = maf_from_GT
     else:
-        raise Exception("Unknown input type provided to fws")
+        raise Exception("Unknown input type: please use one of \"AD\" or \"GT\"")
 
     # Calculate population-level minor allele frequency (MAF)
-    if AD:
-        pop_maf = maf_from_AD(a)
-    else:
-        pop_maf = maf_from_GT(a)
+    pop_maf = maf_func(a)
 
     # Bin the population-level MAFs and calculate mean population-level expected heterozygosity per bin
     bin_indices = get_bin_indices(pop_maf)
@@ -66,10 +64,7 @@ def fws(
     # For every sample
     for i in range(a.shape[1]):
         # calculate sample-level MAF
-        if AD:
-            samp_maf = maf_from_AD(a[:,[i],:])
-        else:
-            samp_maf = maf_from_GT(a[:,[i],:])
+        samp_maf = maf_func(a[:,[i],:])
 
         # bin the sample-level MAFs using the population bin indices
         samp_maf_binned = [samp_maf[b] for b in bin_indices]
@@ -102,7 +97,7 @@ def fws(
 
 @njit()
 def maf_from_AD(
-        AD: ArrayNxNx2, # n_sites x n_samples x 2 array of allele depths (AD)
+    AD: ArrayNxNx2, # n_sites x n_samples x 2 array of allele depths (AD)
 ) -> np.array: # 1d array of minor allele frequencies, len(n_sites)
     
     # We will populate this array with mafs
@@ -138,12 +133,11 @@ def maf_from_AD(
 
     return mafs
 
-# TO DO - handle haploid genotype arrays (e.g. dimensions = NxNx1)
-#       - check all sites are biallelic?
+# TO DO - check all sites are biallelic?
 #       - sort out the dtype of GT
-@njit()
+@njit
 def maf_from_GT(
-        GT: ArrayNxNx2 # n_sites x n_samples x 2 array of genotypes (GT)
+    GT: ArrayNxNx2 # n_sites x n_samples x 2 array of genotypes (GT)
 ) -> np.array: # 1d array of minor allele frequencies, len(n_sites)
     
     # We will populate this array with mafs
@@ -162,7 +156,7 @@ def maf_from_GT(
         for j in range(GT.shape[1]):
 
             # skip missing data
-            if GT[i,j,0] < 0.0 or GT[i,j,1] < 0.0 or np.isnan(GT[i,j,0]) or np.isnan(GT[i,j,1]):
+            if GT[i,j,0] < 0 or GT[i,j,1] < 0 or np.isnan(GT[i,j,0]) or np.isnan(GT[i,j,1]):
                 continue
 
             gt1 = int(GT[i,j,0])
@@ -173,13 +167,12 @@ def maf_from_GT(
             AC[gt2] += 1
 
         # if there is only missing data at this site, set maf to nan and continue to the next site]
-        print(AC)
         if np.sum(AC) == 0:
             mafs[i] = np.nan
             continue
 
         # If we sort (and reverse) the array, the frequency we calculate below will always be < 0.5 because
-        # the lower allele count is l[0]. This means we don't have to check for MAF > 0.5
+        # the lower allele count is AC[1]. This means we don't have to check for AF > 0.5
         AC.sort()
         AC = np.flip(AC)
 
