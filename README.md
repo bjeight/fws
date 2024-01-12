@@ -44,3 +44,22 @@ fws(a: typing.Annotated[numpy.ndarray[typing.Any, numpy.dtype[~DType]], typing.L
     np.array[float]
         An array of fws values, in the same order as the samples in the input
 ```
+
+You can test the program using the numpy arrays in this respository: `testdata/AD.npy` and `testdata/GT.npy`:
+
+```
+>>> import numpy as np
+>>> from fws import fws
+>>>
+>>> AD = np.load("path/to/AD.npy")
+>>> fws(AD)
+array([0.99514152, 0.99817753, 0.99540397, 0.99217399, 0.99927452,
+       0.99928477, 0.99831041, 0.99925686, 0.99913666, 0.99934953,
+       ...
+>>> GT = np.load("path/to/GT.npy")
+>>> fws(GT, "GT")
+array([0.99937286, 0.99928378, 0.99932071, 0.99837554, 0.99939141,
+       0.99950813, 0.99884664, 0.99925243, 0.99962376, 0.99944396,
+       ...    
+```
+
