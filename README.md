@@ -11,6 +11,12 @@ Supported Python versions are 3.10 and 3.11:
 python3.11 -m pip install git+https://github.com/bjeight/fws
 ```
 
+Fws will run much faster if you have numba installed:
+
+```
+python3.11 -m pip install numba
+```
+
 ## Use
 
 ```
